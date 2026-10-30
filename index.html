@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laboratorio de sincronización</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: banco de laboratorio — el "imán" grande a la izquierda, instrumentos de medición a la derecha, lectura abajo */
+:root {
+  --bg: #f3f5f2;
+  --panel: #ffffff;
+  --ink: #17221e;
+  --muted: #5b6a64;
+  --line: #d5ddd8;
+  --accent: #2f5d50;
+  --hot: #d9541a;
+  --grid: #e6ebe8;
+  --f-display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", Arial, sans-serif;
+  --f-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1513; --panel: #17201d; --ink: #e5ece8; --muted: #94a59d; --line: #2a3632;
+    --accent: #6fb39d; --hot: #f08a4b; --grid: #222c29; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1513; --panel: #17201d; --ink: #e5ece8; --muted: #94a59d; --line: #2a3632;
+  --accent: #6fb39d; --hot: #f08a4b; --grid: #222c29; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1160px; margin: 0 auto; display: grid; gap: 20px; }
+header h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.7rem, 4vw, 2.5rem); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
+.bench { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.panel h2 { font-family: var(--f-display); font-size: 1.05rem; font-weight: 700; margin: 0 0 10px; }
+.label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+canvas { display: block; width: 100%; }
+#spins { aspect-ratio: 3 / 2; max-width: 100%; border-radius: 6px; }
+.caption { font-size: 0.85rem; color: var(--muted); margin-top: 8px; }
+.controls { display: grid; gap: 14px; }
+.slider { display: grid; gap: 4px; }
+.slider .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.slider .val { font-family: var(--f-data); font-variant-numeric: tabular-nums; font-weight: 600; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+button {
+  font: inherit; font-size: 0.9rem; padding: 7px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+.meter { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: center; }
+.big { font-family: var(--f-data); font-size: 2.4rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
+.bar { position: relative; height: 12px; background: var(--grid); border-radius: 6px; overflow: hidden; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); border-radius: 6px; }
+.bar .mark { position: absolute; top: -3px; bottom: -3px; width: 3px; background: var(--hot); left: 0; }
+.state { display: inline-block; font-size: 0.8rem; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); }
+.state.on { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+.state.off { color: var(--muted); }
+.side { display: grid; gap: 20px; }
+#trace, #diagram { aspect-ratio: 2 / 1; }
+#diagram { cursor: crosshair; aspect-ratio: 4 / 3; }
+.reading { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; }
+.reading ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+.reading p { margin: 0 0 8px; max-width: 65ch; }
+.reading b { font-weight: 700; }
+.tag { font-family: var(--f-data); font-size: 0.85em; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <h1>Laboratorio de sincronización</h1>
+    <p>150 osciladores conectados al azar (un grafo de Erdős–Rényi), con ruido. Cada flecha es la fase de un oscilador, o un espín del modelo XY: el mismo sistema que un imán. Mové el ruido y la conectividad y mirá cuándo aparece el orden.</p>
+  </header>
+
+  <div class="bench">
+    <section class="panel">
+      <h2>Los osciladores</h2>
+      <canvas id="spins" width="900" height="600" aria-label="Flechas que representan las fases de los osciladores"></canvas>
+      <p class="caption">El color también indica la fase: cuando la red se sincroniza, todas las flechas apuntan parecido y toman el mismo color. La ubicación en la grilla es solo para dibujar: en un grafo aleatorio no hay geometría.</p>
+    </section>
+
+    <div class="side">
+      <section class="panel controls">
+        <h2>Perillas</h2>
+        <div class="slider">
+          <div class="row"><label for="sD">Ruido D <span class="label">(temperatura)</span></label><span class="val" id="vD">0.20</span></div>
+          <input id="sD" type="range" min="0.02" max="0.5" step="0.01" value="0.2">
+        </div>
+        <div class="slider">
+          <div class="row"><label for="sMu">Conectividad μ ≈ p <span class="label">(fracción de vecinos)</span></label><span class="val" id="vMu">0.60</span></div>
+          <input id="sMu" type="range" min="0.05" max="1" step="0.01" value="0.6">
+        </div>
+        <div class="buttons">
+          <button id="bPlay" class="primary" type="button">Pausar</button>
+          <button id="bRand" type="button">Desordenar todo</button>
+          <button id="bAlign" type="button">Alinear todo</button>
+          <button id="bGraph" type="button">Otro grafo</button>
+        </div>
+        <div class="buttons">
+          <span class="label" style="align-self:center">Probá:</span>
+          <button type="button" data-d="0.1" data-mu="0.7">Frío</button>
+          <button type="button" data-d="0.2" data-mu="0.4">En la transición</button>
+          <button type="button" data-d="0.4" data-mu="0.5">Caliente</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Medición</h2>
+        <div class="meter">
+          <span class="label">orden r</span>
+          <span><span class="state" id="state">—</span></span>
+          <span class="big" id="rVal">0.00</span>
+          <div>
+            <div class="bar"><div class="fill" id="rFill"></div><div class="mark" id="rMark"></div></div>
+            <div class="caption" style="margin-top:4px">Barra: r medido. Marca naranja: lo que predice la teoría de campo medio.</div>
+          </div>
+        </div>
+        <canvas id="trace" width="700" height="350" aria-label="Historia del parámetro de orden"></canvas>
+        <p class="caption">r en los últimos 40 segundos de simulación.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Diagrama de fases</h2>
+        <canvas id="diagram" width="700" height="525" aria-label="Diagrama de fases conectividad contra ruido"></canvas>
+        <p class="caption">La recta μ* = 2D/K separa el desorden de la sincronización parcial. Tocá el diagrama para mover el punto.</p>
+      </section>
+    </div>
+  </div>
+
+  <div class="reading">
+    <section class="panel">
+      <h2>Cómo leerlo como un imán</h2>
+      <ul>
+        <li><b>Flecha</b>: un espín (o la fase de un oscilador).</li>
+        <li><b>Ruido D</b>: la temperatura. Sacude las flechas al azar.</li>
+        <li><b>Conectividad μ</b>: cuántos vecinos tiene cada espín. Más vecinos, más fuerte el tirón hacia la dirección común.</li>
+        <li><b>r</b>: la magnetización. 1 si todas apuntan igual, casi 0 si apuntan al azar.</li>
+        <li><b>μ* = 2D/K</b>: el equivalente de la temperatura de Curie. Por encima del umbral, el tirón le gana al ruido.</li>
+      </ul>
+      <p class="caption">Con 150 osciladores la transición se ve un poco suavizada: debajo de μ* r no llega a 0, sino a valores chicos que fluctúan.</p>
+    </section>
+
+    <section class="panel">
+      <h2>¿Es como hervir agua?</h2>
+      <p>Depende de qué cambio de fase. Esta transición es <b>continua</b>: r crece desde cero de a poco al pasar el umbral, sin salto ni calor latente. Es del mismo tipo que la de un imán de hierro a 1043 K (temperatura de Curie): la magnetización se apaga gradualmente y la susceptibilidad se dispara.</p>
+      <p>Hervir agua a presión normal o congelarla son transiciones <b>de primer orden</b>: la densidad salta de golpe, hay calor latente y las dos fases conviven (cubitos en el vaso). No se parecen a esta.</p>
+      <p>El paralelo bueno con el agua es su <b>punto crítico</b> (374 °C y 218 atm). Ahí la diferencia de densidad entre líquido y gas se anula de forma continua, las fluctuaciones son enormes y el agua se vuelve lechosa (opalescencia crítica). Es lo mismo que el pico de la susceptibilidad.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  const N = 150, K = 1, DT = 0.05, STEPS_PER_FRAME = 4;
+  let D = 0.2, mu = 0.6, running = true;
+  let theta = new Float64Array(N);
+  let nb = [];                       // listas de vecinos
+  const COLS = 15, ROWS = 10;
+  const trace = [];                  // [t, r]
+  let t = 0;
+  let seed = 12345;
+  function rand() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+  function gauss() { let u = 0, v = 0; while (u === 0) u = rand(); v = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+
+  // matriz al azar fija; el grafo con probabilidad p es {i<j : U_ij < p}: al mover μ se agregan o sacan aristas
+  let U = new Float64Array(N * N);
+  function newU() { for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) { const u = rand(); U[i * N + j] = u; U[j * N + i] = u; } }
+  function buildGraph() {
+    nb = Array.from({ length: N }, () => []);
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) if (U[i * N + j] < mu) { nb[i].push(j); nb[j].push(i); }
+  }
+  function randomize() { for (let i = 0; i < N; i++) theta[i] = 2 * Math.PI * rand(); }
+  function align() { const a = 2 * Math.PI * rand(); for (let i = 0; i < N; i++) theta[i] = a; }
+
+  const c = new Float64Array(N), s = new Float64Array(N), F = new Float64Array(N);
+  function step() {
+    for (let i = 0; i < N; i++) { c[i] = Math.cos(theta[i]); s[i] = Math.sin(theta[i]); }
+    const J = K / N, amp = Math.sqrt(2 * D * DT);
+    for (let i = 0; i < N; i++) {
+      let sc = 0, ss = 0; const l = nb[i];
+      for (let k = 0; k < l.length; k++) { const j = l[k]; sc += c[j]; ss += s[j]; }
+      F[i] = J * (c[i] * ss - s[i] * sc);
+    }
+    for (let i = 0; i < N; i++) theta[i] += DT * F[i] + amp * gauss();
+    t += DT;
+  }
+  function orderParam() {
+    let x = 0, y = 0; for (let i = 0; i < N; i++) { x += Math.cos(theta[i]); y += Math.sin(theta[i]); }
+    return { r: Math.hypot(x, y) / N, psi: Math.atan2(y, x) };
+  }
+  // teoría: r = I1/I0(Kμr/D)
+  function besselRatio(x) {           // I1(x)/I0(x) por fracción continua
+    if (x < 1e-8) return x / 2;
+    let f = 0; for (let k = 60; k >= 1; k--) f = 1 / (2 * k / x + f);
+    return f;
+  }
+  function rTheory(mu, D) {
+    if (K * mu <= 2 * D) return 0;
+    let lo = 1e-9, hi = 1;
+    for (let it = 0; it < 60; it++) { const m = (lo + hi) / 2; if (m - besselRatio(K * mu * m / D) > 0) hi = m; else lo = m; }
+    return (lo + hi) / 2;
+  }
+
+  // ---------- dibujo
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const spins = document.getElementById('spins'), sctx = spins.getContext('2d');
+  const tr = document.getElementById('trace'), tctx = tr.getContext('2d');
+  const dg = document.getElementById('diagram'), dctx = dg.getContext('2d');
+
+  function drawSpins(psi) {
+    const W = spins.width, H = spins.height;
+    sctx.fillStyle = css('--panel'); sctx.fillRect(0, 0, W, H);
+    const cw = W / COLS, ch = H / ROWS, L = Math.min(cw, ch) * 0.38;
+    for (let i = 0; i < N; i++) {
+      const cx = (i % COLS + 0.5) * cw, cy = (Math.floor(i / COLS) + 0.5) * ch;
+      const a = theta[i];
+      const hue = ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) * 180 / Math.PI;
+      const col = `hsl(${hue}, 62%, ${document.documentElement.dataset.theme === 'dark' || matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' ? 62 : 42}%)`;
+      const dx = Math.cos(a) * L, dy = -Math.sin(a) * L;
+      sctx.strokeStyle = col; sctx.fillStyle = col; sctx.lineWidth = 3; sctx.lineCap = 'round';
+      sctx.beginPath(); sctx.moveTo(cx - dx, cy - dy); sctx.lineTo(cx + dx, cy + dy); sctx.stroke();
+      const hx = Math.cos(a), hy = -Math.sin(a);
+      sctx.beginPath();
+      sctx.moveTo(cx + dx + hx * 6, cy + dy + hy * 6);
+      sctx.lineTo(cx + dx - hx * 6 - hy * 6, cy + dy - hy * 6 + hx * 6);
+      sctx.lineTo(cx + dx - hx * 6 + hy * 6, cy + dy - hy * 6 - hx * 6);
+      sctx.closePath(); sctx.fill();
+    }
+  }
+
+  function drawTrace() {
+    const W = tr.width, H = tr.height, pl = 46, pb = 30, pt = 10, pr = 10;
+    tctx.fillStyle = css('--panel'); tctx.fillRect(0, 0, W, H);
+    tctx.strokeStyle = css('--grid'); tctx.lineWidth = 1;
+    tctx.fillStyle = css('--muted'); tctx.font = '20px ' + css('--f-data');
+    for (let v = 0; v <= 1.001; v += 0.25) {
+      const y = pt + (1 - v) * (H - pt - pb);
+      tctx.beginPath(); tctx.moveTo(pl, y); tctx.lineTo(W - pr, y); tctx.stroke();
+      tctx.fillText(v.toFixed(2), 2, y + 6);
+    }
+    const span = 40, t0 = Math.max(0, t - span);
+    const rt = rTheory(mu, D), yT = pt + (1 - rt) * (H - pt - pb);
+    tctx.strokeStyle = css('--hot'); tctx.setLineDash([8, 6]); tctx.lineWidth = 2;
+    tctx.beginPath(); tctx.moveTo(pl, yT); tctx.lineTo(W - pr, yT); tctx.stroke(); tctx.setLineDash([]);
+    tctx.strokeStyle = css('--accent'); tctx.lineWidth = 3; tctx.beginPath();
+    let first = true;
+    for (const [tt, r] of trace) {
+      if (tt < t0) continue;
+      const x = pl + (tt - t0) / span * (W - pl - pr), y = pt + (1 - r) * (H - pt - pb);
+      if (first) { tctx.moveTo(x, y); first = false; } else tctx.lineTo(x, y);
+    }
+    tctx.stroke();
+    tctx.fillStyle = css('--muted'); tctx.fillText('tiempo →', W - 130, H - 6);
+  }
+
+  const DMAX = 0.5;
+  function dgX(d) { return 60 + d / DMAX * (dg.width - 80); }
+  function dgY(m) { return 15 + (1 - m) * (dg.height - 70); }
+  function drawDiagram() {
+    const W = dg.width, H = dg.height;
+    dctx.fillStyle = css('--panel'); dctx.fillRect(0, 0, W, H);
+    // región sincronizada: μ > 2D
+    dctx.fillStyle = css('--accent'); dctx.globalAlpha = 0.14;
+    dctx.beginPath(); dctx.moveTo(dgX(0), dgY(0)); dctx.lineTo(dgX(0.5), dgY(1)); dctx.lineTo(dgX(0), dgY(1)); dctx.closePath(); dctx.fill();
+    dctx.globalAlpha = 1;
+    dctx.strokeStyle = css('--grid'); dctx.lineWidth = 1;
+    dctx.fillStyle = css('--muted'); dctx.font = '20px ' + css('--f-data');
+    for (let m = 0; m <= 1.001; m += 0.25) { const y = dgY(m); dctx.beginPath(); dctx.moveTo(dgX(0), y); dctx.lineTo(dgX(DMAX), y); dctx.stroke(); dctx.fillText(m.toFixed(2), 2, y + 6); }
+    for (let d = 0; d <= DMAX + 1e-9; d += 0.1) { const x = dgX(d); dctx.beginPath(); dctx.moveTo(x, dgY(0)); dctx.lineTo(x, dgY(1)); dctx.stroke(); dctx.fillText(d.toFixed(1), x - 16, H - 28); }
+    dctx.fillText('ruido D', W - 110, H - 4);
+    dctx.save(); dctx.translate(18, H / 2 + 60); dctx.rotate(-Math.PI / 2); dctx.fillText('conectividad μ', 0, 0); dctx.restore();
+    dctx.strokeStyle = css('--accent'); dctx.lineWidth = 3;
+    dctx.beginPath(); dctx.moveTo(dgX(0), dgY(0)); dctx.lineTo(dgX(0.5), dgY(1)); dctx.stroke();
+    dctx.fillStyle = css('--ink'); dctx.font = '22px ' + css('--f-body');
+    dctx.fillText('sincronización parcial', dgX(0.03), dgY(0.9));
+    dctx.fillText('desorden', dgX(0.33), dgY(0.2));
+    dctx.fillStyle = css('--accent'); dctx.fillText('μ* = 2D/K', dgX(0.36), dgY(0.78));
+    dctx.fillStyle = css('--hot'); dctx.beginPath(); dctx.arc(dgX(D), dgY(mu), 10, 0, 2 * Math.PI); dctx.fill();
+  }
+
+  // ---------- controles
+  const sD = document.getElementById('sD'), sMu = document.getElementById('sMu');
+  const vD = document.getElementById('vD'), vMu = document.getElementById('vMu');
+  function setD(v) { D = v; sD.value = v; vD.textContent = v.toFixed(2); }
+  function setMu(v) { mu = v; sMu.value = v; vMu.textContent = v.toFixed(2); buildGraph(); }
+  sD.addEventListener('input', () => setD(+sD.value));
+  sMu.addEventListener('input', () => setMu(+sMu.value));
+  document.getElementById('bPlay').addEventListener('click', e => { running = !running; e.target.textContent = running ? 'Pausar' : 'Seguir'; });
+  document.getElementById('bRand').addEventListener('click', randomize);
+  document.getElementById('bAlign').addEventListener('click', align);
+  document.getElementById('bGraph').addEventListener('click', () => { newU(); buildGraph(); });
+  document.querySelectorAll('button[data-d]').forEach(b => b.addEventListener('click', () => { setD(+b.dataset.d); setMu(+b.dataset.mu); }));
+  dg.addEventListener('click', e => {
+    const rect = dg.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width * dg.width, y = (e.clientY - rect.top) / rect.height * dg.height;
+    const d = Math.min(0.5, Math.max(0.02, (x - 60) / (dg.width - 80) * DMAX));
+    const m = Math.min(1, Math.max(0.05, 1 - (y - 15) / (dg.height - 70)));
+    setD(Math.round(d * 100) / 100); setMu(Math.round(m * 100) / 100);
+  });
+
+  const rVal = document.getElementById('rVal'), rFill = document.getElementById('rFill'), rMark = document.getElementById('rMark'), stateEl = document.getElementById('state');
+  let rSmooth = 0;
+  function frame() {
+    if (running) for (let k = 0; k < STEPS_PER_FRAME; k++) step();
+    const { r, psi } = orderParam();
+    rSmooth = 0.9 * rSmooth + 0.1 * r;
+    if (running) { trace.push([t, r]); while (trace.length && trace[0][0] < t - 45) trace.shift(); }
+    rVal.textContent = rSmooth.toFixed(2);
+    rFill.style.width = (rSmooth * 100) + '%';
+    const rt = rTheory(mu, D);
+    rMark.style.left = `calc(${rt * 100}% - 1.5px)`;
+    const sync = K * mu > 2 * D;
+    stateEl.textContent = sync ? 'sincronización parcial' : 'desorden';
+    stateEl.className = 'state ' + (sync ? 'on' : 'off');
+    drawSpins(psi); drawTrace(); drawDiagram();
+    requestAnimationFrame(frame);
+  }
+
+  newU(); buildGraph(); randomize();
+  setD(0.2); setMu(0.6);
+  for (let k = 0; k < 200; k++) step();
+  frame();
+})();
+</script>
+
+</body>
+</html>
