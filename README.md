@@ -76,6 +76,13 @@ figuras/                     figuras ya generadas
 - **$\langle r\rangle$ por debajo de $\mu^*$:** cae como $N^{-1/2}$.
 - **Dependencia con el ruido ($N=200$):** $\mu^*=0.208$, 0.316, 0.420, 0.525 y 0.621 para $D=0.10$ a 0.30, de acuerdo con $\mu^*=2D/K$.
 
+## Uso de inteligencia artificial
+
+El código de este repositorio fue escrito en gran parte con la asistencia de Claude
+(Anthropic), a partir de las consignas y decisiones de los autores, que lo ejecutaron,
+revisaron y validaron. Los resultados del informe se reproducen con los scripts incluidos
+y las semillas indicadas.
+
 ## Referencias
 
 - S. Gupta, A. Campa, S. Ruffo, *Statistical Physics of Synchronization*, Springer (2018).
